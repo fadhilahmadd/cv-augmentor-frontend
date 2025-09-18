@@ -1,18 +1,13 @@
 services:
-  frontend:
+  web:
     build:
       context: .
       dockerfile: Dockerfile
+    image: cv-augmentor-frontend:latest
     ports:
-      - "3000:3000"
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/.next
-    env_file:
-      - ./.env.local
-    networks:
-      - default
+      - "127.0.0.1:3000:3000" 
+    environment:
+      API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+      NODE_ENV: production
+    restart: unless-stopped
 
-networks:
-  default:
