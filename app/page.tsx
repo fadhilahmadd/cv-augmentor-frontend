@@ -1,103 +1,103 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
+import { AnalysisForm } from './_components/analysis-form';
+import { JobList } from './_components/job-list';
+import { ReportModal } from './_components/report-modal';
+import { Batch, Job } from '@/lib/types';
+import { submitTextCV, submitBatchCVs, getJobStatus } from '@/lib/api-service';
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+  const updateJobStatuses = useCallback((updatedJobs: Job[]) => {
+    const updatedJobsMap = new Map(updatedJobs.map(job => [job.id, job]));
+
+    setBatches(prevBatches => {
+      let hasChanges = false;
+      const newBatches = prevBatches.map(batch => ({
+        ...batch,
+        jobs: batch.jobs.map(job => {
+          const updatedJob = updatedJobsMap.get(job.id);
+          if (updatedJob && job.status !== updatedJob.status) {
+            hasChanges = true;
+            if (updatedJob.status === 'completed') {
+              toast.success(`Analysis for "${updatedJob.filename}" is complete!`);
+            } else if (updatedJob.status === 'failed') {
+              toast.error(`Analysis for "${updatedJob.filename}" failed.`);
+            }
+            return updatedJob;
+          }
+          return job;
+        }),
+      }));
+      return hasChanges ? newBatches : prevBatches;
+    });
+  }, []);
+
+  useEffect(() => {
+    const activeJobs = batches.flatMap(b => b.jobs).filter(j => j.status === 'pending' || j.status === 'processing');
+    if (activeJobs.length === 0) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const promises = activeJobs.map(job => getJobStatus(job.id));
+        const updatedJobs = await Promise.all(promises);
+        updateJobStatuses(updatedJobs);
+      } catch (error) {
+        console.error("Polling failed:", error);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [batches, updateJobStatuses]);
+
+
+  const handleSubmit = async (data: { jobRole: string; cvText?: string; cvFiles?: File[] }) => {
+    setIsLoading(true);
+    const promise = () => new Promise(async (resolve, reject) => {
+      try {
+        if (data.cvText) {
+          const job = await submitTextCV(data.cvText, data.jobRole);
+          setBatches(prev => [...prev, { batch_id: job.id, jobs: [job] }]);
+        } else if (data.cvFiles) {
+          const newBatch = await submitBatchCVs(data.cvFiles, data.jobRole);
+          setBatches(prev => [...prev, newBatch]);
+        }
+        resolve("Jobs submitted successfully!");
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    toast.promise(promise(), {
+      loading: 'Submitting analysis job(s)...',
+      success: (message) => `${message}`,
+      error: 'Submission failed. Please try again.',
+    });
+    
+    setIsLoading(false);
+  };
+
+  const selectedJob = batches.flatMap(b => b.jobs).find(j => j.id === selectedJobId) || null;
+
+  return (
+    <main className="main-background flex min-h-screen flex-col items-center p-8 md:p-24">
+      <div className="z-10 w-full max-w-5xl items-center justify-center font-mono text-sm flex flex-col">
+        <h1 className="text-4xl font-bold mb-2">CV Augmentor</h1>
+        <p className="text-muted-foreground mb-8">AI-Powered Skill Gap Analysis for Recruiters</p>
+        
+        <AnalysisForm onSubmit={handleSubmit} isLoading={isLoading} />
+        <JobList batches={batches} onViewReport={setSelectedJobId} />
+      </div>
+      <ReportModal
+        job={selectedJob}
+        isOpen={!!selectedJobId}
+        onClose={() => setSelectedJobId(null)}
+      />
+    </main>
   );
 }
