@@ -47,22 +47,22 @@ export function JobList({ batches, onViewReport }: JobListProps) {
       <h2 className="text-xl font-semibold">Analysis</h2>
       {batches.map((batch) => {
         
-        const isBatchComplete = batch.jobs.every(job => job.status === 'completed');
+        const allCompleted = batch.jobs.every(j => j.status === 'completed');
 
         return (
           <Card key={batch.batch_id}>
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle className="text-lg">Batch ID: {batch.batch_id.slice(0, 8)}</CardTitle>
-                
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  asChild 
-                  disabled={!isBatchComplete}
-                >
-                  <a href={getBatchDownloadUrl(batch.batch_id)}>Download All Reports</a>
-                </Button>
+                {allCompleted ? (
+                  <Button size="sm" variant="outline" asChild>
+                    <a href={getBatchDownloadUrl(batch.batch_id)}>Download All Reports</a>
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" disabled aria-disabled="true" title="Wait until all jobs complete">
+                    Download All Reports
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
